@@ -17,7 +17,7 @@ typedef struct vec{
 	int	size;
 }*VEC;
 
-int max(int array[],int size){
+int Max(int array[],int size){
 	int max;
 	int i;
 	max =array[0];
@@ -30,6 +30,7 @@ int max(int array[],int size){
 
 	return max;
 }
+
 void VecView(VEC vec){
 	int i;
 	for(i = 0; i < vec->size;i++){
@@ -37,7 +38,41 @@ void VecView(VEC vec){
 	}
 }
 
-void MatView(MAT_CSR mat){
+void MatView(MAT_DENSE matdense){
+	int i,j;
+
+        for(i = 0; i< matdense->row; i++){
+		printf("row %d: ", i);
+                for(j = 0; j < matdense->col;j++){
+            		printf("%f   ",  matdense->val[j+matdense->col*i]);
+                }
+		printf("\n");
+        }
+}
+
+MAT_DENSE Csr2Dense(MAT_CSR mat){
+	int i,j;
+	int start, end;
+	MAT_DENSE matdense;
+
+	matdense = (MAT_DENSE) malloc(sizeof(struct matdense));
+	matdense->row = mat->rowptrsize-1;
+	matdense->col = 1 + Max(mat->colindx, mat->colsize);
+	matdense->val = (double*)malloc(matdense->row*matdense->col*sizeof(double));
+	
+	for(i = 0; i< matdense->row; i++){
+		for(j = 0; j < matdense->col;j++){
+			matdense->val[j+matdense->col*i] = 0.0;		
+		}
+	}
+        for(i = 0; i< matdense->row; i++){
+                start = mat->rowptr[i];;
+                end = mat->rowptr[i+1];
+                for(j = start; j < end; j++){
+                       matdense->val[i*matdense->col+mat->colindx[j]] = mat->val[j];
+                }
+        }
+	return matdense;
 }
 
 VEC omp_spmv_csr(MAT_CSR mat, VEC vec){
@@ -45,20 +80,20 @@ VEC omp_spmv_csr(MAT_CSR mat, VEC vec){
 	int i,j;
 	int rowsize;
 	int start, end;
-	int count;
-	double c;
 	VEC sol;
+	int tmp;
 
 	sol = (VEC)malloc(sizeof(struct vec));
 	rowsize = mat->rowptrsize - 1;
 	sol->size = rowsize;
 	sol->val = (double*)malloc(sol->size*sizeof(double));
+	#pragma omp parallel for private(i,j,tmp)
 	for(i = 0; i< rowsize; i++){
-		sol->val[i] = 0.0;
-		start = mat->rowptr[i];;
-		end = mat->rowptr[i+1];
-		for(j = start; j < end; j++){
-			sol->val[i]+=mat->val[j]*vec->val[mat->colindx[j]];
+		sol->val[i] = 0.0; 
+		for(j = mat->rowptr[i]; j < mat->rowptr[i+1]; j++){
+			tmp  = mat->val[j]*vec->val[mat->colindx[j]];
+			#pragma omp atomic
+			sol->val[i]+=tmp;
 		}	
 	}
 
@@ -108,6 +143,25 @@ for(i = 0;i < vec->size;i++){
 
 sol = omp_spmv_csr(mat, vec);
 VecView(sol);
+
+/*
+MAT_DENSE mt;
+mt = Csr2Dense(mat);
+MatView(mt);
+int j;
+j = mt->col;
+printf("j = %d\n",j);
+*/
+
+/* 
+       for(i = 0; i< mt->row; i++){
+                printf("row %d: ", i);
+                for(j = 0; j < mt->col;j++){
+                        printf("%f   ",  mt->val[i+mt->col*j]);
+                }
+                printf("\n");
+        }
+*/
 /*
 double *val;
 int *colindx, *rowptr;
