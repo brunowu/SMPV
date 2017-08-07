@@ -1,6 +1,7 @@
 #include <omp.h>
 #include <stdio.h>
 #include <stdlib.h>
+
 typedef struct matcsr{
 	double *val;
 	int	*colindx, *rowptr;
@@ -11,6 +12,13 @@ typedef struct matdense{
 	double *val;
 	int	row, col;
 }*MAT_DENSE;
+
+typedef struct matdia{
+	int	colsize, rowsize;
+	double *val;
+	int    *offset;
+	int	diag_num;
+}*MAT_DIA;
 
 typedef struct vec{
 	double *val;
@@ -50,6 +58,13 @@ void MatView(MAT_DENSE matdense){
         }
 }
 
+MAT_CSR MMReadCSR(FILE *file){
+	int M, N;
+	MAT_CSR mat;
+	mat = (MAT_CSR) malloc(sizeof(struct matcsr));
+
+
+}
 MAT_DENSE Csr2Dense(MAT_CSR mat){
 	int i,j;
 	int start, end;
@@ -75,6 +90,29 @@ MAT_DENSE Csr2Dense(MAT_CSR mat){
 	return matdense;
 }
 
+VEC omp_spmv_dia(MAT_DIA mat, VEC vec){
+	VEC sol;
+	sol = (VEC)malloc(sizeof(struct vec));
+	sol->size = vec->size;
+        sol->val = (double*)malloc(sol->size*sizeof(double));
+	int row;
+	int i;
+	int tmp;
+
+	#pragma omp parallel for private(row, i, tmp)
+	for(row = 0; row < mat->rowsize; row++){
+		for(i = 0; i < mat->diag_num;i++){
+			int col = row + mat->offset[i];
+			double val = mat->val[mat->rowsize*i+row];
+			if(col >=0 && col < mat->colsize){
+				tmp = val * vec->val[col];
+				sol->val[row] += tmp;
+			}
+		}
+	}
+
+	return sol;
+}
 VEC omp_spmv_csr(MAT_CSR mat, VEC vec){
 
 	int i,j;
@@ -114,9 +152,28 @@ int i;
 MAT_CSR mat;
 VEC	vec;
 VEC	sol;
-
+MAT_DIA	dia;
+VEC	sol2;
 mat = (MAT_CSR) malloc(sizeof(struct matcsr));
 vec = (VEC)malloc(sizeof(struct vec));
+dia = (MAT_DIA) malloc(sizeof(struct matdia));
+
+dia->colsize = 4;
+dia->rowsize = 4;
+dia->diag_num = 3;
+
+dia->val = (double*)malloc(dia->rowsize*dia->diag_num*sizeof(double));
+dia->offset = (int*)malloc(dia->diag_num*sizeof(int));
+
+int m[3] = {-2,0,1};
+double n[12] = {0,0,5,6,1,2,3,4,7,8,9,0};
+
+for(i = 0;i < dia->diag_num;i++){
+        dia->offset[i] = m[i];
+}
+for(i = 0;i < dia->rowsize*dia->diag_num;i++){
+        dia->val[i] = n[i];
+}
 
 mat->valsize = 9;
 mat->colsize = 9;
@@ -143,7 +200,9 @@ for(i = 0;i < vec->size;i++){
 
 sol = omp_spmv_csr(mat, vec);
 VecView(sol);
-
+printf("--------------------\n");
+sol2 = omp_spmv_dia(dia, vec);
+VecView(sol2);
 /*
 MAT_DENSE mt;
 mt = Csr2Dense(mat);
